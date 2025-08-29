@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { skillService } from "../lib/database"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,8 +19,8 @@ interface SkillLevel {
 interface Employee {
   id: string
   name: string
-  employeeCode: string
-  skills: Record<string, SkillLevel["level"]>
+  employee_code: string
+  skills?: Record<string, SkillLevel["level"]>
 }
 
 interface FilterState {
@@ -39,12 +40,49 @@ export function SkillMatrix({ departmentName, employees, onUpdateEmployeeSkills 
   const [isEditing, setIsEditing] = useState(false)
   const [editedEmployees, setEditedEmployees] = useState<Employee[]>([])
   const [showFilters, setShowFilters] = useState(false)
+  const [employeeSkills, setEmployeeSkills] = useState<Record<string, Record<string, SkillLevel["level"]>>>({})
+  const [loadingSkills, setLoadingSkills] = useState(false)
   const [filters, setFilters] = useState<FilterState>({
     skillActivities: [],
     skillLevels: [],
     employeeName: "",
     employeeCode: "",
   })
+
+  // Load employee skills when component mounts or employees change
+  useEffect(() => {
+    loadEmployeeSkills()
+  }, [employees])
+
+  const loadEmployeeSkills = async () => {
+    if (employees.length === 0) return
+
+    setLoadingSkills(true)
+    console.log("🎯 [SkillMatrix] Loading skills for employees...")
+
+    try {
+      const skillsData: Record<string, Record<string, SkillLevel["level"]>> = {}
+
+      for (const employee of employees) {
+        try {
+          const skills = await skillService.getEmployeeSkills(employee.id)
+          skillsData[employee.id] = skills
+          console.log(`✅ [SkillMatrix] Loaded skills for ${employee.name}:`, skills)
+        } catch (error) {
+          console.error(`❌ [SkillMatrix] Error loading skills for ${employee.name}:`, error)
+          // Initialize with empty skills if loading fails
+          skillsData[employee.id] = {}
+        }
+      }
+
+      setEmployeeSkills(skillsData)
+      console.log("✅ [SkillMatrix] All employee skills loaded:", skillsData)
+    } catch (error) {
+      console.error("❌ [SkillMatrix] Error loading employee skills:", error)
+    } finally {
+      setLoadingSkills(false)
+    }
+  }
 
   // Department-specific skill categories
   const getDepartmentSkills = (deptName: string): string[] => {
@@ -157,13 +195,13 @@ export function SkillMatrix({ departmentName, employees, onUpdateEmployeeSkills 
 
     // Filter by employee code
     if (filters.employeeCode) {
-      filtered = filtered.filter((emp) => emp.employeeCode.includes(filters.employeeCode))
+      filtered = filtered.filter((emp) => emp.employee_code.includes(filters.employeeCode))
     }
 
     // Filter by skill levels
     if (filters.skillLevels.length > 0) {
       filtered = filtered.filter((emp) =>
-        Object.values(emp.skills).some((level) => filters.skillLevels.includes(level)),
+        emp.skills && Object.values(emp.skills).some((level) => filters.skillLevels.includes(level)),
       )
     }
 
@@ -179,7 +217,11 @@ export function SkillMatrix({ departmentName, employees, onUpdateEmployeeSkills 
   }
 
   const handleStartEdit = () => {
-    setEditedEmployees([...employees])
+    const employeesWithSkills = employees.map(emp => ({
+      ...emp,
+      skills: employeeSkills[emp.id] || {}
+    }))
+    setEditedEmployees(employeesWithSkills)
     setIsEditing(true)
   }
 
@@ -191,7 +233,7 @@ export function SkillMatrix({ departmentName, employees, onUpdateEmployeeSkills 
   const handleSaveEdit = () => {
     // Update each employee's skills
     editedEmployees.forEach((employee) => {
-      if (onUpdateEmployeeSkills) {
+      if (onUpdateEmployeeSkills && employee.skills) {
         onUpdateEmployeeSkills(employee.id, employee.skills)
       }
     })
@@ -445,17 +487,17 @@ export function SkillMatrix({ departmentName, employees, onUpdateEmployeeSkills 
                 <tr key={employee.id} className="hover:bg-gray-50">
                   <td className="border border-gray-300 p-2 text-xs text-center">{index + 1}</td>
                   <td className="border border-gray-300 p-2 text-xs">{employee.name}</td>
-                  <td className="border border-gray-300 p-2 text-xs text-center">{employee.employeeCode}</td>
+                  <td className="border border-gray-300 p-2 text-xs text-center">{employee.employee_code}</td>
                   {filteredSkillCategories.map((skill) => (
                     <td key={skill} className="border border-gray-300 p-1 text-center">
                       {isEditing ? (
                         <Select
-                          value={employee.skills[skill] || "NA"}
+                          value={employeeSkills[employee.id]?.[skill] || "NA"}
                           onValueChange={(value: SkillLevel["level"]) => handleSkillChange(employee.id, skill, value)}
                         >
                           <SelectTrigger className="w-20 h-8 mx-auto">
                             <SelectValue>
-                              <SkillLevelSquares level={employee.skills[skill] || "NA"} size="sm" />
+                              <SkillLevelSquares level={employeeSkills[employee.id]?.[skill] || "NA"} size="sm" />
                             </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
@@ -470,7 +512,7 @@ export function SkillMatrix({ departmentName, employees, onUpdateEmployeeSkills 
                           </SelectContent>
                         </Select>
                       ) : (
-                        <SkillLevelSquares level={employee.skills[skill] || "NA"} size="sm" />
+                        <SkillLevelSquares level={employeeSkills[employee.id]?.[skill] || "NA"} size="sm" />
                       )}
                     </td>
                   ))}

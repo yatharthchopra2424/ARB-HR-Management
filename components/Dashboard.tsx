@@ -10,6 +10,7 @@ import { DepartmentManagement } from "./DepartmentManagement"
 import { MeetingManagement } from "./MeetingManagement"
 import { TrainingChart } from "./TrainingChart"
 import { departmentService, trainingDataService } from "../lib/database"
+import { useAuth } from "../lib/auth-context"
 import { Building2, Users, Calendar, LogOut, BarChart3, TrendingUp, Clock, GraduationCap } from "lucide-react"
 
 interface DashboardProps {
@@ -30,6 +31,7 @@ export function Dashboard({ username, onLogout }: DashboardProps) {
   const [departmentCount, setDepartmentCount] = useState(0)
   const [totalEmployees, setTotalEmployees] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
+  const { signOut } = useAuth()
 
   useEffect(() => {
     loadDashboardData()
@@ -38,45 +40,76 @@ export function Dashboard({ username, onLogout }: DashboardProps) {
   const loadDashboardData = async () => {
     try {
       setIsLoading(true)
+      console.log("🔄 Starting dashboard data load...")
 
       // Load departments
+      console.log("📊 Fetching departments...")
       const departments = await departmentService.getAll()
+      console.log("✅ Departments fetched successfully:", departments)
       setDepartmentCount(departments.length)
       setTotalEmployees(departments.reduce((sum, dept) => sum + dept.employee_count, 0))
+      console.log(`📈 Department stats - Count: ${departments.length}, Total Employees: ${departments.reduce((sum, dept) => sum + dept.employee_count, 0)}`)
 
       // Load training data
+      console.log("📈 Fetching training data for year 2025...")
       const training = await trainingDataService.getByYear(2025)
+      console.log("✅ Training data fetched successfully:", training)
       const formattedTrainingData = training.map((item) => ({
         month: item.month,
         planned: item.planned,
         done: item.done,
         pending: item.pending,
       }))
+      console.log("🔄 Training data formatted:", formattedTrainingData)
       setTrainingData(formattedTrainingData)
+      console.log("✅ Dashboard data load completed successfully")
     } catch (error) {
-      console.error("Error loading dashboard data:", error)
+      console.error("❌ Error loading dashboard data:", error)
+      console.error("❌ Error details:", {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        error
+      })
     } finally {
       setIsLoading(false)
+      console.log("🏁 Dashboard data load finished (success or error)")
     }
   }
 
   const handleUpdateTrainingData = async (data: TrainingData[]) => {
     try {
+      console.log("🔄 Starting training data update...")
+      console.log("📊 Data to update:", data)
+
       // Update each month's data
       for (const monthData of data) {
-        await trainingDataService.updateMonth(monthData.month, 2025, {
+        console.log(`📝 Updating month: ${monthData.month} with data:`, {
           planned: monthData.planned,
           done: monthData.done,
           pending: monthData.pending,
         })
+
+        const result = await trainingDataService.updateMonth(monthData.month, 2025, {
+          planned: monthData.planned,
+          done: monthData.done,
+          pending: monthData.pending,
+        })
+
+        console.log(`✅ Month ${monthData.month} updated successfully:`, result)
       }
+
       setTrainingData(data)
-      console.log("Training data updated successfully!")
+      console.log("✅ All training data updated successfully!")
     } catch (error) {
+      console.error("❌ Error updating training data:", error)
       if (error instanceof Error) {
-        console.error("Error updating training data:", error.message, error.stack)
+        console.error("❌ Error details:", {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        })
       } else {
-        console.error("Error updating training data:", JSON.stringify(error))
+        console.error("❌ Error details (non-Error object):", JSON.stringify(error, null, 2))
       }
     }
   }
@@ -85,22 +118,24 @@ export function Dashboard({ username, onLogout }: DashboardProps) {
     {
       title: "Total Employees",
       value: totalEmployees.toString(),
-      change: "+12",
+      change: "Live",
       changeType: "positive" as const,
       icon: Users,
     },
     {
       title: "Departments",
       value: departmentCount.toString(),
-      change: "+1",
+      change: "Active",
       changeType: "positive" as const,
       icon: Building2,
     },
     {
       title: "Training Today",
-      value: "5",
-      change: "-2",
-      changeType: "negative" as const,
+      value: trainingData
+        .find((d) => d.month === new Date().toLocaleString("default", { month: "short" }))
+        ?.planned.toString() || "0",
+      change: "Planned",
+      changeType: "positive" as const,
       icon: Calendar,
     },
     {
@@ -108,18 +143,22 @@ export function Dashboard({ username, onLogout }: DashboardProps) {
       value:
         trainingData
           .find((d) => d.month === new Date().toLocaleString("default", { month: "short" }))
-          ?.planned.toString() || "30",
-      change: "+8",
+          ?.planned.toString() || "0",
+      change: "This Month",
       changeType: "positive" as const,
       icon: GraduationCap,
     },
   ]
 
-  const weeklyTrainings = [
-    { id: "1", title: "Safety Training", time: "09:00 AM", participants: 8 },
-    { id: "2", title: "Quality Control Training", time: "02:00 PM", participants: 5 },
-    { id: "3", title: "Equipment Operation Training", time: "04:00 PM", participants: 12 },
-  ]
+  // Dynamic weekly trainings based on actual data
+  const weeklyTrainings = trainingData.length > 0 ? [
+    {
+      id: "current",
+      title: "Monthly Training Overview",
+      time: new Date().toLocaleDateString(),
+      participants: totalEmployees
+    }
+  ] : []
 
   if (isLoading) {
     return (
@@ -154,7 +193,7 @@ export function Dashboard({ username, onLogout }: DashboardProps) {
                 <p className="text-sm text-muted-foreground">HR Manager</p>
               </div>
             </div>
-            <Button variant="outline" onClick={onLogout}>
+            <Button variant="outline" onClick={signOut}>
               <LogOut className="h-4 w-4 mr-2" />
               Logout
             </Button>

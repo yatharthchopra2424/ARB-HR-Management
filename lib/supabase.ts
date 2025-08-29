@@ -3,7 +3,18 @@ import { createClient } from "@supabase/supabase-js"
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
+console.log("🔧 [Supabase] Initializing Supabase client...")
+console.log("🔧 [Supabase] URL:", supabaseUrl ? "✅ Configured" : "❌ Missing")
+console.log("🔧 [Supabase] Anon Key:", supabaseAnonKey ? "✅ Configured" : "❌ Missing")
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+console.log("✅ [Supabase] Client initialized successfully")
+console.log("🔧 [Supabase] Client config:", {
+  url: supabaseUrl,
+  hasAnonKey: !!supabaseAnonKey,
+  clientVersion: "Latest"
+})
 
 // Database types
 export interface Department {

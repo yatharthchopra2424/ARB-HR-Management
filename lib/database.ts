@@ -11,20 +11,53 @@ import {
 // Department operations
 export const departmentService = {
   async getAll(): Promise<Department[]> {
+    console.log("🔍 [DB] Fetching all departments...")
+    console.log("🔍 [DB] Query: SELECT * FROM departments ORDER BY name")
+
     const { data, error } = await supabase.from("departments").select("*").order("name")
 
-    if (error) throw error
+    if (error) {
+      console.error("❌ [DB] Error fetching departments:", error)
+      console.error("❌ [DB] Error details:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+      throw error
+    }
+
+    console.log("✅ [DB] Departments fetched successfully:", data)
+    console.log(`✅ [DB] Retrieved ${data?.length || 0} departments`)
     return data || []
   },
 
   async create(name: string): Promise<Department> {
+    console.log(`📝 [Dept] Creating new department: ${name}`)
+    console.log(`📝 [Dept] Query: INSERT INTO departments (name, employee_count) VALUES ('${name}', 0)`)
+
     const { data, error } = await supabase.from("departments").insert({ name, employee_count: 0 }).select().single()
 
-    if (error) throw error
+    if (error) {
+      console.error("❌ [Dept] Error creating department:", error)
+      console.error("❌ [Dept] Error details:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+      throw error
+    }
+
+    console.log("✅ [Dept] Department created successfully:", data)
     return data
   },
 
   async update(id: string, updates: Partial<Department>): Promise<Department> {
+    console.log(`📝 [Dept] Updating department: ${id}`)
+    console.log(`📝 [Dept] Update data:`, updates)
+    console.log(`📝 [Dept] Query: UPDATE departments SET ... WHERE id = '${id}'`)
+
     const { data, error } = await supabase
       .from("departments")
       .update({ ...updates, updated_at: new Date().toISOString() })
@@ -32,20 +65,48 @@ export const departmentService = {
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.error("❌ [Dept] Error updating department:", error)
+      console.error("❌ [Dept] Error details:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+      throw error
+    }
+
+    console.log("✅ [Dept] Department updated successfully:", data)
     return data
   },
 
   async delete(id: string): Promise<void> {
+    console.log(`🗑️ [Dept] Deleting department: ${id}`)
+    console.log(`🗑️ [Dept] Query: DELETE FROM departments WHERE id = '${id}'`)
+
     const { error } = await supabase.from("departments").delete().eq("id", id)
 
-    if (error) throw error
+    if (error) {
+      console.error("❌ [Dept] Error deleting department:", error)
+      console.error("❌ [Dept] Error details:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+      throw error
+    }
+
+    console.log("✅ [Dept] Department deleted successfully")
   },
 }
 
 // Employee operations
 export const employeeService = {
   async getByDepartment(departmentId: string): Promise<Employee[]> {
+    console.log(`🔍 [Emp] Fetching employees for department: ${departmentId}`)
+    console.log(`🔍 [Emp] Query: SELECT *, department:departments(*) FROM employees WHERE department_id = '${departmentId}' ORDER BY name`)
+
     const { data, error } = await supabase
       .from("employees")
       .select(`
@@ -55,22 +116,71 @@ export const employeeService = {
       .eq("department_id", departmentId)
       .order("name")
 
-    if (error) throw error
+    if (error) {
+      console.error("❌ [Emp] Error fetching employees:", error)
+      console.error("❌ [Emp] Error details:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+      throw error
+    }
+
+    console.log("✅ [Emp] Employees fetched successfully:", data)
+    console.log(`✅ [Emp] Retrieved ${data?.length || 0} employees for department ${departmentId}`)
     return data || []
   },
 
   async create(employee: Omit<Employee, "id" | "created_at" | "updated_at">): Promise<Employee> {
+    console.log("👤 [Emp] Creating new employee...")
+    console.log("👤 [Emp] Employee data:", employee)
+    console.log("👤 [Emp] Query: INSERT INTO employees (name, employee_code, position, department_id) VALUES (...)")
+
     const { data, error } = await supabase.from("employees").insert(employee).select().single()
 
-    if (error) throw error
+    if (error) {
+      console.error("❌ [Emp] Error creating employee:", error)
+      console.error("❌ [Emp] Error details:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+      throw error
+    }
+
+    console.log("✅ [Emp] Employee created successfully:", data)
 
     // Update department employee count
-    await supabase.rpc("increment_department_count", { dept_id: employee.department_id })
+    console.log("🔄 [Emp] Updating department employee count...")
+    console.log("🔄 [Emp] Calling RPC: increment_department_count with dept_id:", employee.department_id)
+
+    const { data: rpcData, error: rpcError } = await supabase.rpc("increment_department_count", {
+      dept_id: employee.department_id
+    })
+
+    if (rpcError) {
+      console.error("❌ [Emp] Error updating department count:", rpcError)
+      console.error("❌ [Emp] RPC Error details:", {
+        message: rpcError.message,
+        details: rpcError.details,
+        hint: rpcError.hint,
+        code: rpcError.code
+      })
+      // Don't throw here as employee was created successfully
+    } else {
+      console.log("✅ [Emp] Department count updated successfully:", rpcData)
+    }
 
     return data
   },
 
   async update(id: string, updates: Partial<Employee>): Promise<Employee> {
+    console.log(`📝 [Emp] Updating employee: ${id}`)
+    console.log(`📝 [Emp] Update data:`, updates)
+    console.log(`📝 [Emp] Query: UPDATE employees SET ... WHERE id = '${id}'`)
+
     const { data, error } = await supabase
       .from("employees")
       .update({ ...updates, updated_at: new Date().toISOString() })
@@ -78,21 +188,79 @@ export const employeeService = {
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.error("❌ [Emp] Error updating employee:", error)
+      console.error("❌ [Emp] Error details:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+      throw error
+    }
+
+    console.log("✅ [Emp] Employee updated successfully:", data)
     return data
   },
 
   async delete(id: string): Promise<void> {
-    // Get employee to update department count
-    const { data: employee } = await supabase.from("employees").select("department_id").eq("id", id).single()
+    console.log(`🗑️ [Emp] Deleting employee: ${id}`)
 
+    // Get employee to update department count
+    console.log(`🔍 [Emp] Fetching employee details for deletion...`)
+    const { data: employee, error: fetchError } = await supabase.from("employees").select("department_id").eq("id", id).single()
+
+    if (fetchError) {
+      console.error("❌ [Emp] Error fetching employee for deletion:", fetchError)
+      console.error("❌ [Emp] Fetch error details:", {
+        message: fetchError.message,
+        details: fetchError.details,
+        hint: fetchError.hint,
+        code: fetchError.code
+      })
+    } else {
+      console.log("✅ [Emp] Employee details fetched:", employee)
+    }
+
+    console.log(`🗑️ [Emp] Query: DELETE FROM employees WHERE id = '${id}'`)
     const { error } = await supabase.from("employees").delete().eq("id", id)
 
-    if (error) throw error
+    if (error) {
+      console.error("❌ [Emp] Error deleting employee:", error)
+      console.error("❌ [Emp] Delete error details:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+      throw error
+    }
+
+    console.log("✅ [Emp] Employee deleted successfully")
 
     // Update department employee count
     if (employee) {
-      await supabase.rpc("decrement_department_count", { dept_id: employee.department_id })
+      console.log("🔄 [Emp] Updating department employee count...")
+      console.log("🔄 [Emp] Calling RPC: decrement_department_count with dept_id:", employee.department_id)
+
+      const { data: rpcData, error: rpcError } = await supabase.rpc("decrement_department_count", {
+        dept_id: employee.department_id
+      })
+
+      if (rpcError) {
+        console.error("❌ [Emp] Error updating department count:", rpcError)
+        console.error("❌ [Emp] RPC Error details:", {
+          message: rpcError.message,
+          details: rpcError.details,
+          hint: rpcError.hint,
+          code: rpcError.code
+        })
+        // Don't throw here as employee was deleted successfully
+      } else {
+        console.log("✅ [Emp] Department count updated successfully:", rpcData)
+      }
+    } else {
+      console.log("⚠️ [Emp] No employee data found, skipping department count update")
     }
   },
 }
@@ -119,8 +287,8 @@ export const skillService = {
 
     const skillsMap: Record<string, "L1" | "L2" | "L3" | "L4" | "NA"> = {}
     data?.forEach((item) => {
-      if (item.skill) {
-        skillsMap[item.skill.name] = item.skill_level
+      if (item.skill && typeof item.skill === 'object' && 'name' in item.skill) {
+        skillsMap[String(item.skill.name)] = item.skill_level
       }
     })
 
@@ -232,9 +400,24 @@ export const trainingPlanService = {
 // Training Data operations
 export const trainingDataService = {
   async getByYear(year: number): Promise<TrainingData[]> {
+    console.log(`🔍 [DB] Fetching training data for year: ${year}`)
+    console.log(`🔍 [DB] Query: SELECT * FROM training_data WHERE year = ${year} ORDER BY month`)
+
     const { data, error } = await supabase.from("training_data").select("*").eq("year", year).order("month")
 
-    if (error) throw error
+    if (error) {
+      console.error("❌ [DB] Error fetching training data:", error)
+      console.error("❌ [DB] Error details:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+      throw error
+    }
+
+    console.log("✅ [DB] Training data fetched successfully:", data)
+    console.log(`✅ [DB] Retrieved ${data?.length || 0} training records for year ${year}`)
     return data || []
   },
 
@@ -243,6 +426,10 @@ export const trainingDataService = {
     year: number,
     updates: { planned?: number; done?: number; pending?: number },
   ): Promise<TrainingData> {
+    console.log(`🔄 [DB] Updating training data for ${month} ${year}`)
+    console.log(`🔄 [DB] Update data:`, updates)
+    console.log(`🔄 [DB] Query: UPSERT training_data SET month='${month}', year=${year}, ...`)
+
     const { data, error } = await supabase
       .from("training_data")
       .upsert({
@@ -254,7 +441,18 @@ export const trainingDataService = {
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.error("❌ [DB] Error updating training data:", error)
+      console.error("❌ [DB] Error details:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+      throw error
+    }
+
+    console.log("✅ [DB] Training data updated successfully:", data)
     return data
   },
 }

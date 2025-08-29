@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,356 +17,239 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { Plus, Edit2, Users, Eye, UserPlus, Settings, Trash2, Loader2 } from "lucide-react"
 import { SkillMatrix } from "./SkillMatrix"
-import { Plus, Edit2, Users, Eye, UserPlus, Settings, Trash2 } from "lucide-react"
-
-interface Department {
-  id: string
-  name: string
-  employeeCount: number
-}
-
-interface Employee {
-  id: string
-  name: string
-  employeeCode: string
-  position: string
-  skills: Record<string, "L1" | "L2" | "L3" | "L4" | "NA">
-}
+import { departmentService, employeeService, skillService } from "../lib/database"
+import type { Department, Employee, Skill } from "../lib/supabase"
 
 export function DepartmentManagement() {
-  const [departments, setDepartments] = useState<Department[]>([
-    { id: "1", name: "Assembly", employeeCount: 10 },
-    { id: "3", name: "Quality Control", employeeCount: 8 },
-    { id: "4", name: "Maintenance", employeeCount: 10 },
-    { id: "5", name: "Bonded", employeeCount: 9 },
-    { id: "6", name: "Grinding", employeeCount: 10 },
-    { id: "7", name: "HT", employeeCount: 7 },
-    { id: "8", name: "Roller Grinding", employeeCount: 5 },
-    { id: "9", name: "Store", employeeCount: 4 },
-    { id: "10", name: "Turning", employeeCount: 11 },
-  ])
-
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [skills, setSkills] = useState<Skill[]>([])
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null)
   const [isAddingDepartment, setIsAddingDepartment] = useState(false)
+  const [isEditingDepartment, setIsEditingDepartment] = useState(false)
   const [isAddingEmployee, setIsAddingEmployee] = useState(false)
-  const [employeeData, setEmployeeData] = useState<Record<string, Employee[]>>({})
+  const [loading, setLoading] = useState(true)
   const [newDepartment, setNewDepartment] = useState({ name: "" })
+  const [editingDepartment, setEditingDepartment] = useState<Department | null>(null)
   const [newEmployee, setNewEmployee] = useState({
     name: "",
-    employeeCode: "",
+    employee_code: "",
     position: "",
-    skills: {} as Record<string, "L1" | "L2" | "L3" | "L4" | "NA">,
+    department_id: "",
   })
 
-  // Get department-specific skill categories
-  const getDepartmentSkills = (departmentName: string): string[] => {
-    switch (departmentName.toLowerCase()) {
-      case "bonded":
-        return [
-          "Knowledge of First In First Out",
-          "Knowledge of Identification of Material Lot/Ladle",
-          "Knowledge of Material System Docking/un-docking",
-          "Knowledge of Bottle Handling",
-          "Communication with Ladle System & Data Entry",
-          "Knowledge of Verification of invoice with Supplier",
-          "Knowledge of Preparation of Challan (OGC/FIFO)",
-          "Knowledge of word Processing/Coordinating",
-          "Knowledge of 5 S",
-          "Knowledge of Inventory Management",
-          "Wastage Management",
-          "Knowledge of Internal Quality Standard",
-          "Operate to OSHA/Pollution & with Safety Instructions",
-          "Additional Skill Activity",
-        ]
-      case "grinding":
-        return [
-          "Knowledge of First In First Out",
-          "Knowledge of Identification",
-          "Knowledge of Segregation of Rejected",
-          "Knowledge of Grinding MC",
-          "Knowledge of Work Hardness",
-          "Knowledge of Thickness of Work",
-          "Knowledge of End Lead of Piece",
-          "Knowledge of Hardess Index",
-          "Knowledge of Safety",
-          "Knowledge of Grinding Test",
-          "Knowledge of FMEA",
-          "Knowledge of PM",
-          "Knowledge of Finish",
-          "Knowledge of Post Process",
-          "Knowledge of Part Id of Post Process Work",
-          "Knowledge of Part Running Stock",
-          "Knowledge of Process",
-          "Knowledge of Heat Change",
-          "Knowledge of Skill at Machine",
-          "Knowledge of Coordinate of Grind MC",
-          "Knowledge of Pre and Post Grind MC",
-        ]
-      case "maintenance":
-        return [
-          "Knowledge of Assembly/Disassembly Component",
-          "Knowledge of Electrical Part List",
-          "Knowledge of Mechanical",
-          "Knowledge of Wind Preventive Maintenance",
-          "Knowledge of Lifting Equipment",
-          "Knowledge of Welding Equipment",
-          "Knowledge of Material Handling",
-          "Knowledge of General Safety",
-          "Control Equipment",
-          "Knowledge of Preventive Equipment",
-          "Knowledge of Safety Equipment",
-          "Knowledge of Equipment Operation",
-          "Knowledge of Hydraulic Equipment",
-          "Knowledge of Pneumatic Equipment",
-          "Knowledge of Electrical Equipment",
-          "Knowledge of Preventive/Basic Equipment",
-          "Knowledge of Basic Equipment",
-          "Knowledge of Operational Equipment",
-          "Knowledge of Control Equipment",
-          "Post Equipment Monitoring",
-          "Knowledge of Emergency Equipment",
-          "Knowledge of Fire Equipment",
-          "Knowledge of Safety Audit Equipment",
-          "Knowledge of Equipment Maintenance",
-          "Knowledge of Diagnostic Equipment",
-          "Knowledge of Calibration Equipment",
-          "Knowledge of Troubleshooting",
-          "Knowledge of Equipment Documentation",
-          "Knowledge of Spare Parts Management",
-          "Knowledge of Equipment Inspection",
-          "Knowledge of Maintenance Planning",
-        ]
-      default:
-        return [
-          "Visual Inspection",
-          "Computer Setting",
-          "Dial Reading",
-          "Seaming Make",
-          "RC Check",
-          "Roller Filing",
-          "Master Matching",
-          "Giver Track Size",
-          "Lazer MC Operate",
-          "Washing Oiling MC",
-          "Searing Practice",
-          "Child Complex Release",
-          "Ball Searing BC",
-          "Bore Gauge Setting",
-          "Vernier Reading",
-          "Large Die Equipment",
-          "Rivet MC Setting",
-          "Pneumatic Press MC",
-          "Manual Operate",
-        ]
+  // Load data from Supabase
+  useEffect(() => {
+    loadDepartments()
+  }, [])
+
+  useEffect(() => {
+    if (departments.length > 0) {
+      loadEmployees()
+      loadSkills()
+    }
+  }, [departments])
+
+  const loadDepartments = async () => {
+    try {
+      console.log("📊 [Dept] Loading departments...")
+      const data = await departmentService.getAll()
+      console.log("✅ [Dept] Departments loaded:", data)
+      setDepartments(data)
+    } catch (error) {
+      console.error("❌ [Dept] Error loading departments:", error)
     }
   }
 
-  // Initialize employee data
-  const getInitialEmployeeData = (): Record<string, Employee[]> => ({
-    "1": [
-      {
-        id: "1",
-        name: "Brijesh Kumar",
-        employeeCode: "10829",
-        position: "Assembly Operator",
-        skills: {
-          "Visual Inspection": "L4",
-          "Computer Setting": "L3",
-          "Dial Reading": "L4",
-          "Seaming Make": "L4",
-          "RC Check": "L3",
-          "Roller Filing": "L4",
-          "Master Matching": "L3",
-          "Giver Track Size": "L4",
-          "Lazer MC Operate": "L4",
-          "Washing Oiling MC": "L4",
-          "Searing Practice": "L4",
-          "Child Complex Release": "L3",
-          "Ball Searing BC": "L4",
-          "Bore Gauge Setting": "L4",
-          "Vernier Reading": "L4",
-          "Large Die Equipment": "L4",
-          "Rivet MC Setting": "L4",
-          "Pneumatic Press MC": "L4",
-          "Manual Operate": "L4",
-        },
-      },
-      {
-        id: "2",
-        name: "Devender Singh",
-        employeeCode: "11206",
-        position: "Assembly Technician",
-        skills: {
-          "Visual Inspection": "L3",
-          "Computer Setting": "L3",
-          "Dial Reading": "L3",
-          "Seaming Make": "L4",
-          "RC Check": "L3",
-          "Roller Filing": "L4",
-          "Master Matching": "L3",
-          "Giver Track Size": "L4",
-          "Lazer MC Operate": "L4",
-          "Washing Oiling MC": "L4",
-          "Searing Practice": "L4",
-          "Child Complex Release": "L3",
-          "Ball Searing BC": "L4",
-          "Bore Gauge Setting": "L4",
-          "Vernier Reading": "L4",
-          "Large Die Equipment": "L4",
-          "Rivet MC Setting": "L4",
-          "Pneumatic Press MC": "L4",
-          "Manual Operate": "L4",
-        },
-      },
-    ],
-    "5": [
-      {
-        id: "8",
-        name: "Shambu Paswam",
-        employeeCode: "11061",
-        position: "Bonding Operator",
-        skills: {
-          "Knowledge of First In First Out": "L3",
-          "Knowledge of Identification of Material Lot/Ladle": "L3",
-          "Knowledge of Material System Docking/un-docking": "L3",
-          "Knowledge of Bottle Handling": "L3",
-          "Communication with Ladle System & Data Entry": "NA",
-          "Knowledge of Verification of invoice with Supplier": "L3",
-          "Knowledge of Preparation of Challan (OGC/FIFO)": "NA",
-          "Knowledge of word Processing/Coordinating": "NA",
-          "Knowledge of 5 S": "L3",
-          "Knowledge of Inventory Management": "L3",
-          "Wastage Management": "NA",
-          "Knowledge of Internal Quality Standard": "L3",
-          "Operate to OSHA/Pollution & with Safety Instructions": "L3",
-          "Additional Skill Activity": "L3",
-        },
-      },
-    ],
-  })
+  const loadEmployees = async () => {
+    try {
+      console.log("👥 [Emp] Loading employees...")
+      const allEmployees: Employee[] = []
+      for (const dept of departments) {
+        try {
+          const deptEmployees = await employeeService.getByDepartment(dept.id)
+          allEmployees.push(...deptEmployees)
+        } catch (error) {
+          console.error(`❌ [Emp] Error loading employees for department ${dept.id}:`, error)
+        }
+      }
+      console.log("✅ [Emp] Employees loaded:", allEmployees)
+      setEmployees(allEmployees)
+    } catch (error) {
+      console.error("❌ [Emp] Error loading employees:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  // Initialize employee data if not already done
-  if (Object.keys(employeeData).length === 0) {
-    setEmployeeData(getInitialEmployeeData())
+  const loadSkills = async () => {
+    try {
+      console.log("🎯 [Skill] Loading skills...")
+      const allSkills: Skill[] = []
+      for (const dept of departments) {
+        try {
+          const deptSkills = await skillService.getByDepartment(dept.id)
+          allSkills.push(...deptSkills)
+        } catch (error) {
+          console.error(`❌ [Skill] Error loading skills for department ${dept.id}:`, error)
+        }
+      }
+      console.log("✅ [Skill] Skills loaded:", allSkills)
+      setSkills(allSkills)
+    } catch (error) {
+      console.error("❌ [Skill] Error loading skills:", error)
+    }
   }
 
   const getEmployeesByDepartment = (departmentId: string): Employee[] => {
-    return employeeData[departmentId] || []
+    return employees.filter(emp => emp.department_id === departmentId)
   }
 
-  const handleUpdateEmployeeSkills = (employeeId: string, skills: Record<string, "L1" | "L2" | "L3" | "L4" | "NA">) => {
-    if (!selectedDepartment) return
-    setEmployeeData((prev) => ({
-      ...prev,
-      [selectedDepartment]:
-        prev[selectedDepartment]?.map((emp) => (emp.id === employeeId ? { ...emp, skills } : emp)) || [],
-    }))
-    console.log("Employee skills updated successfully!")
+  const handleAddDepartment = async () => {
+    if (!newDepartment.name.trim()) return
+
+    try {
+      console.log("📝 [Dept] Adding new department:", newDepartment.name)
+      const department = await departmentService.create(newDepartment.name)
+      console.log("✅ [Dept] Department added successfully:", department)
+
+      setDepartments([...departments, department])
+      setNewDepartment({ name: "" })
+      setIsAddingDepartment(false)
+    } catch (error) {
+      console.error("❌ [Dept] Error adding department:", error)
+    }
   }
 
-  const getSkillLevelCounts = (skills: Record<string, "L1" | "L2" | "L3" | "L4" | "NA">) => {
-    const counts = { L1: 0, L2: 0, L3: 0, L4: 0 }
-    const skillValues = Object.values(skills)
+  const handleEditDepartment = (department: Department) => {
+    setEditingDepartment(department)
+    setIsEditingDepartment(true)
+  }
 
-    skillValues.forEach((level) => {
-      if (level !== "NA" && counts.hasOwnProperty(level)) {
-        counts[level as keyof typeof counts]++
+  const handleUpdateDepartment = async () => {
+    if (!editingDepartment || !editingDepartment.name.trim()) return
+
+    try {
+      console.log("📝 [Dept] Updating department:", editingDepartment.id)
+      const updated = await departmentService.update(editingDepartment.id, {
+        name: editingDepartment.name
+      })
+      console.log("✅ [Dept] Department updated successfully:", updated)
+
+      setDepartments(departments.map(dept =>
+        dept.id === editingDepartment.id ? updated : dept
+      ))
+      setIsEditingDepartment(false)
+      setEditingDepartment(null)
+    } catch (error) {
+      console.error("❌ [Dept] Error updating department:", error)
+    }
+  }
+
+  const handleDeleteDepartment = async (departmentId: string) => {
+    try {
+      console.log("🗑️ [Dept] Deleting department:", departmentId)
+      await departmentService.delete(departmentId)
+      console.log("✅ [Dept] Department deleted successfully")
+
+      setDepartments(departments.filter(dept => dept.id !== departmentId))
+      if (selectedDepartment === departmentId) {
+        setSelectedDepartment(null)
       }
-    })
-    const totalSkills = skillValues.filter((level) => level !== "NA").length
-    return { counts, totalSkills }
-  }
-
-  const formatSkillSummary = (skills: Record<string, "L1" | "L2" | "L3" | "L4" | "NA">) => {
-    const { counts, totalSkills } = getSkillLevelCounts(skills)
-    const summaryParts = []
-    if (counts.L1 > 0) summaryParts.push(`L1 = ${counts.L1}`)
-    if (counts.L2 > 0) summaryParts.push(`L2 = ${counts.L2}`)
-    if (counts.L3 > 0) summaryParts.push(`L3 = ${counts.L3}`)
-    if (counts.L4 > 0) summaryParts.push(`L4 = ${counts.L4}`)
-    return `${summaryParts.join(", ")} out of ${totalSkills} skills`
-  }
-
-  const handleAddDepartment = () => {
-    if (!newDepartment.name) return
-    const department: Department = {
-      id: Date.now().toString(),
-      name: newDepartment.name,
-      employeeCount: 0,
+    } catch (error) {
+      console.error("❌ [Dept] Error deleting department:", error)
     }
-    setDepartments([...departments, department])
-    setNewDepartment({ name: "" })
-    setIsAddingDepartment(false)
-    console.log("Department added successfully!")
   }
 
-  const handleAddEmployee = () => {
-    if (!selectedDepartment || !newEmployee.name || !newEmployee.employeeCode || !newEmployee.position) {
-      console.error("Please fill in all required fields")
+  const handleAddEmployee = async () => {
+    if (!newEmployee.name.trim() || !newEmployee.employee_code.trim() ||
+        !newEmployee.position.trim() || !selectedDepartment) {
+      console.error("❌ [Emp] Please fill in all required fields")
       return
     }
 
-    // Check if employee code already exists
-    const allEmployees = Object.values(employeeData).flat()
-    if (allEmployees.some((emp) => emp.employeeCode === newEmployee.employeeCode)) {
-      console.error("Employee code already exists")
-      return
+    try {
+      console.log("👤 [Emp] Adding new employee:", newEmployee.name)
+      const employee = await employeeService.create({
+        name: newEmployee.name,
+        employee_code: newEmployee.employee_code,
+        position: newEmployee.position,
+        department_id: selectedDepartment,
+      })
+      console.log("✅ [Emp] Employee added successfully:", employee)
+
+      // Initialize skills for the new employee with default "NA" values
+      const department = departments.find(d => d.id === selectedDepartment)
+      if (department) {
+        const deptSkills = skills.filter(s => s.department_id === selectedDepartment)
+        const initialSkills: Record<string, "L1" | "L2" | "L3" | "L4" | "NA"> = {}
+
+        deptSkills.forEach(skill => {
+          initialSkills[skill.name] = "NA"
+        })
+
+        if (Object.keys(initialSkills).length > 0) {
+          console.log("🎯 [Skill] Initializing skills for new employee:", initialSkills)
+          await skillService.updateEmployeeSkills(employee.id, initialSkills)
+          console.log("✅ [Skill] Skills initialized for new employee")
+        }
+      }
+
+      setEmployees([...employees, employee])
+      setNewEmployee({ name: "", employee_code: "", position: "", department_id: "" })
+      setIsAddingEmployee(false)
+
+      // Refresh departments to update employee count
+      await loadDepartments()
+      await loadEmployees() // Refresh to get updated employee data with skills
+    } catch (error) {
+      console.error("❌ [Emp] Error adding employee:", error)
     }
-
-    const department = departments.find((d) => d.id === selectedDepartment)
-    if (!department) return
-
-    // Initialize skills with default values
-    const departmentSkills = getDepartmentSkills(department.name)
-    const initialSkills: Record<string, "L1" | "L2" | "L3" | "L4" | "NA"> = {}
-
-    departmentSkills.forEach((skill) => {
-      initialSkills[skill] = newEmployee.skills[skill] || "NA"
-    })
-
-    const employee: Employee = {
-      id: Date.now().toString(),
-      name: newEmployee.name,
-      employeeCode: newEmployee.employeeCode,
-      position: newEmployee.position,
-      skills: initialSkills,
-    }
-
-    setEmployeeData((prev) => ({
-      ...prev,
-      [selectedDepartment]: [...(prev[selectedDepartment] || []), employee],
-    }))
-
-    // Update department employee count
-    setDepartments((prev) =>
-      prev.map((dept) => (dept.id === selectedDepartment ? { ...dept, employeeCount: dept.employeeCount + 1 } : dept)),
-    )
-
-    setNewEmployee({ name: "", employeeCode: "", position: "", skills: {} })
-    setIsAddingEmployee(false)
-    console.log("Employee added successfully!")
   }
 
-  const handleDeleteEmployee = (employeeId: string) => {
-    if (!selectedDepartment) return
-    setEmployeeData((prev) => ({
-      ...prev,
-      [selectedDepartment]: prev[selectedDepartment]?.filter((emp) => emp.id !== employeeId) || [],
-    }))
+  const handleDeleteEmployee = async (employeeId: string) => {
+    try {
+      console.log("🗑️ [Emp] Deleting employee:", employeeId)
+      await employeeService.delete(employeeId)
+      console.log("✅ [Emp] Employee deleted successfully")
 
-    // Update department employee count
-    setDepartments((prev) =>
-      prev.map((dept) =>
-        dept.id === selectedDepartment ? { ...dept, employeeCount: Math.max(0, dept.employeeCount - 1) } : dept,
-      ),
+      setEmployees(employees.filter(emp => emp.id !== employeeId))
+      // Refresh departments to update employee count
+      await loadDepartments()
+    } catch (error) {
+      console.error("❌ [Emp] Error deleting employee:", error)
+    }
+  }
+
+  const handleUpdateEmployeeSkills = async (employeeId: string, skills: Record<string, "L1" | "L2" | "L3" | "L4" | "NA">) => {
+    try {
+      console.log("🎯 [Skill] Updating employee skills:", employeeId, skills)
+      await skillService.updateEmployeeSkills(employeeId, skills)
+      console.log("✅ [Skill] Employee skills updated successfully")
+
+      // Refresh employees to get updated skill data
+      await loadEmployees()
+    } catch (error) {
+      console.error("❌ [Skill] Error updating employee skills:", error)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading departments...</p>
+        </div>
+      </div>
     )
-    console.log("Employee deleted successfully!")
   }
 
   if (selectedDepartment) {
     const department = departments.find((d) => d.id === selectedDepartment)
-    const employees = getEmployeesByDepartment(selectedDepartment)
+    const departmentEmployees = getEmployeesByDepartment(selectedDepartment)
 
     return (
       <div className="space-y-6">
@@ -376,7 +259,7 @@ export function DepartmentManagement() {
               ← Back to Departments
             </Button>
             <h2>{department?.name} Department</h2>
-            <p className="text-muted-foreground">Employee skills and competency matrix</p>
+            <p className="text-muted-foreground">Manage employees and department details</p>
           </div>
           <div className="flex gap-2">
             <Dialog open={isAddingEmployee} onOpenChange={setIsAddingEmployee}>
@@ -406,8 +289,8 @@ export function DepartmentManagement() {
                       <Label htmlFor="emp-code">Employee Code *</Label>
                       <Input
                         id="emp-code"
-                        value={newEmployee.employeeCode}
-                        onChange={(e) => setNewEmployee({ ...newEmployee, employeeCode: e.target.value })}
+                        value={newEmployee.employee_code}
+                        onChange={(e) => setNewEmployee({ ...newEmployee, employee_code: e.target.value })}
                         placeholder="Enter employee code"
                       />
                     </div>
@@ -430,28 +313,24 @@ export function DepartmentManagement() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-            <Button variant="outline">
-              <Settings className="h-4 w-4 mr-2" />
-              Manage Skills
-            </Button>
           </div>
         </div>
 
         <Tabs defaultValue="employees" className="space-y-6">
           <TabsList>
             <TabsTrigger value="employees">Employee List</TabsTrigger>
-            <TabsTrigger value="skill-matrix">Skill Matrix</TabsTrigger>
+            <TabsTrigger value="skills">Skill Matrix</TabsTrigger>
             <TabsTrigger value="department-info">Department Info</TabsTrigger>
           </TabsList>
 
           <TabsContent value="employees" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Department Employees ({employees.length})</CardTitle>
+                <CardTitle>Department Employees ({departmentEmployees.length})</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {employees.map((employee) => (
+                  {departmentEmployees.map((employee) => (
                     <Card key={employee.id} className="p-4">
                       <div className="space-y-2">
                         <div className="flex justify-between items-start">
@@ -460,7 +339,7 @@ export function DepartmentManagement() {
                             <p className="text-sm text-muted-foreground">{employee.position}</p>
                           </div>
                           <div className="flex items-center gap-1">
-                            <Badge variant="outline">{employee.employeeCode}</Badge>
+                            <Badge variant="outline">{employee.employee_code}</Badge>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -471,18 +350,11 @@ export function DepartmentManagement() {
                             </Button>
                           </div>
                         </div>
-                        <Separator />
-                        <div className="space-y-1">
-                          <p className="text-xs text-muted-foreground">Skills Summary</p>
-                          <p className="text-xs text-gray-700 bg-gray-50 p-2 rounded">
-                            {formatSkillSummary(employee.skills)}
-                          </p>
-                        </div>
                       </div>
                     </Card>
                   ))}
                 </div>
-                {employees.length === 0 && (
+                {departmentEmployees.length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
                     No employees in this department. Click "Add Employee" to get started.
                   </div>
@@ -491,10 +363,10 @@ export function DepartmentManagement() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="skill-matrix">
+          <TabsContent value="skills">
             <SkillMatrix
               departmentName={department?.name || ""}
-              employees={employees}
+              employees={departmentEmployees}
               onUpdateEmployeeSkills={handleUpdateEmployeeSkills}
             />
           </TabsContent>
@@ -508,8 +380,12 @@ export function DepartmentManagement() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <div>
+                      <p className="text-sm text-muted-foreground">Department Name</p>
+                      <p>{department?.name}</p>
+                    </div>
+                    <div>
                       <p className="text-sm text-muted-foreground">Total Employees</p>
-                      <p>{employees.length} employees</p>
+                      <p>{departmentEmployees.length} employees</p>
                     </div>
                   </div>
                   <div className="space-y-4">
@@ -532,7 +408,7 @@ export function DepartmentManagement() {
       <div className="flex justify-between items-center">
         <div>
           <h2>Department Management</h2>
-          <p className="text-muted-foreground">Manage organizational departments and employee skills</p>
+          <p className="text-muted-foreground">Manage organizational departments and employees</p>
         </div>
         <Button onClick={() => setIsAddingDepartment(!isAddingDepartment)}>
           <Plus className="h-4 w-4 mr-2" />
@@ -565,6 +441,33 @@ export function DepartmentManagement() {
         </Card>
       )}
 
+      {/* Edit Department Dialog */}
+      <Dialog open={isEditingDepartment} onOpenChange={setIsEditingDepartment}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Department</DialogTitle>
+            <DialogDescription>Update department information</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-dept-name">Department Name</Label>
+              <Input
+                id="edit-dept-name"
+                value={editingDepartment?.name || ""}
+                onChange={(e) => setEditingDepartment(editingDepartment ? { ...editingDepartment, name: e.target.value } : null)}
+                placeholder="Enter department name"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditingDepartment(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateDepartment}>Update Department</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {departments.map((dept) => (
           <Card key={dept.id} className="hover:shadow-md transition-shadow">
@@ -572,8 +475,20 @@ export function DepartmentManagement() {
               <div className="flex justify-between items-start">
                 <CardTitle className="text-lg">{dept.name}</CardTitle>
                 <div className="flex gap-2">
-                  <Button variant="ghost" size="sm">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEditDepartment(dept)}
+                  >
                     <Edit2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteDepartment(dept.id)}
+                    className="text-red-500 hover:text-red-700"
+                  >
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
@@ -602,6 +517,12 @@ export function DepartmentManagement() {
           </Card>
         ))}
       </div>
+
+      {departments.length === 0 && (
+        <div className="text-center py-8 text-muted-foreground">
+          No departments found. Click "Add Department" to get started.
+        </div>
+      )}
     </div>
   )
 }
